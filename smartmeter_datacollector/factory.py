@@ -20,6 +20,7 @@ from smartmeter_datacollector.smartmeter.lge360 import LGE360
 from smartmeter_datacollector.smartmeter.lge450 import LGE450
 from smartmeter_datacollector.smartmeter.lge570 import LGE570
 from smartmeter_datacollector.smartmeter.meter import Meter, MeterError
+from smartmeter_datacollector.smartmeter.scaling import ScalingConfig
 from smartmeter_datacollector.smartmeter.siemens_td3511 import SiemensTD3511
 
 
@@ -28,47 +29,54 @@ def build_meters(config: ConfigParser) -> List[Meter]:
     for section_name in filter(lambda sec: sec.startswith("reader"), config.sections()):
         meter_config = config[section_name]
         meter_type = meter_config.get('type')
+        scaling = ScalingConfig.from_config(meter_config)
         try:
             if meter_type == "lge450":
                 meters.append(LGE450(
                     port=meter_config.get('port', "/dev/ttyUSB0"),
                     baudrate=meter_config.getint('baudrate', LGE450.BAUDRATE),
                     decryption_key=meter_config.get('key'),
-                    use_system_time=meter_config.getboolean('systemtime', False)
+                    use_system_time=meter_config.getboolean('systemtime', False),
+                    scaling=scaling
                 ))
             elif meter_type == "lge570":
                 meters.append(LGE570(
                     port=meter_config.get('port', "/dev/ttyUSB0"),
                     baudrate=meter_config.getint('baudrate', LGE570.BAUDRATE),
                     decryption_key=meter_config.get('key'),
-                    use_system_time=meter_config.getboolean('systemtime', False)
+                    use_system_time=meter_config.getboolean('systemtime', False),
+                    scaling=scaling
                 ))
             elif meter_type == "lge360":
                 meters.append(LGE360(
                     port=meter_config.get('port', "/dev/ttyUSB0"),
                     baudrate=meter_config.getint('baudrate', LGE360.BAUDRATE),
                     decryption_key=meter_config.get('key'),
-                    use_system_time=meter_config.getboolean('systemtime', False)
+                    use_system_time=meter_config.getboolean('systemtime', False),
+                    scaling=scaling
                 ))
             elif meter_type == "iskraam550":
                 meters.append(IskraAM550(
                     port=meter_config.get('port', "/dev/ttyUSB0"),
                     baudrate=meter_config.getint('baudrate', IskraAM550.BAUDRATE),
                     decryption_key=meter_config.get('key'),
-                    use_system_time=meter_config.getboolean('systemtime', False)
+                    use_system_time=meter_config.getboolean('systemtime', False),
+                    scaling=scaling
                 ))
             elif meter_type == "kamstrup_han":
                 meters.append(KamstrupHAN(
                     port=meter_config.get('port', "/dev/ttyUSB0"),
                     baudrate=meter_config.getint('baudrate', KamstrupHAN.BAUDRATE),
                     decryption_key=meter_config.get('key'),
-                    use_system_time=meter_config.getboolean('systemtime', False)
+                    use_system_time=meter_config.getboolean('systemtime', False),
+                    scaling=scaling
                 ))
             elif meter_type == "siemens_td3511":
                 meters.append(SiemensTD3511(
                     port=meter_config.get('port', "/dev/ttyUSB0"),
                     baudrate=meter_config.getint('baudrate', SiemensTD3511.BAUDRATE),
-                    use_system_time=meter_config.getboolean('systemtime', False)
+                    use_system_time=meter_config.getboolean('systemtime', False),
+                    scaling=scaling
                 ))
             else:
                 raise InvalidConfigError(f"'type' is invalid or missing: {meter_type}")

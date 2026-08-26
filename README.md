@@ -156,6 +156,28 @@ The usage of `smartmeter-datacollector` depends on the installation method. Inde
 
 See [Wiki/Configuration](https://github.com/scs/smartmeter-datacollector/wiki/Configuration#manually-write-configuration) for more details on the available configuration options.
 
+#### Custom scaling of readings
+
+Each `reader` section supports optional scaling factors that are applied **on top of** the meter's built-in scaling. They let you correct or rescale readings (e.g. to compensate for a current transformer ratio) without changing the source code:
+
+* `scale` — a single factor applied to **every** register of that meter.
+* `scale.<obis>` — a factor for **one specific OBIS code**, which overrides `scale` for that register. The OBIS code may be written in short form (`c.d.e`, e.g. `3.7.0`) or full form (`a.b.c.d.e`, e.g. `1.0.3.7.0`).
+
+Both are multiplicative, so the emitted value is `raw_value * builtin_scaling * factor`. Leaving them out keeps the default behaviour unchanged. Invalid values or OBIS codes are logged and ignored.
+
+Example:
+
+```ini
+[reader0]
+type = lge450
+port = /dev/ttyUSB0
+key =
+# multiply every reading of this meter by 0.5
+scale = 0.5
+# ... but scale reactive power (OBIS 1.0.3.7.0) by 40 instead
+scale.1.0.3.7.0 = 40
+```
+
 ### smartmeter-datacollector-configurator
 
 To simplify the process of generating a valid `.ini` configuration for `smartmeter-datacollector` the companion [`smartmeter-datacollector-configurator`](https://github.com/scs/smartmeter-datacollector-configurator) web interface can be used. It supports

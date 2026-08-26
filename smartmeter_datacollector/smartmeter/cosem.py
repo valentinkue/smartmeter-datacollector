@@ -7,7 +7,7 @@
 #
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +16,7 @@ from gurux_dlms.objects import GXDLMSClock, GXDLMSData, GXDLMSRegister
 
 from smartmeter_datacollector.smartmeter.meter_data import MeterDataPointType, MeterDataPointTypes
 from smartmeter_datacollector.smartmeter.obis import OBISCode
+from smartmeter_datacollector.smartmeter.scaling import ScalingConfig
 
 LOGGER = logging.getLogger("smartmeter")
 
@@ -111,7 +112,8 @@ class Cosem:
     def __init__(self,
                  fallback_id: str,
                  id_obis_override: Optional[List[OBISCode]] = None,
-                 register_obis_extended: Optional[List[RegisterCosem]] = None) -> None:
+                 register_obis_extended: Optional[List[RegisterCosem]] = None,
+                 scaling: Optional[ScalingConfig] = None) -> None:
         self._id: Optional[str] = None
         if not fallback_id:
             fallback_id = str(uuid.uuid1())
@@ -121,6 +123,14 @@ class Cosem:
         self._register_obis = {r.obis: r for r in DEFAULT_REGISTER_MAP}
         if register_obis_extended:
             self._register_obis.update({r.obis: r for r in register_obis_extended})
+        if scaling and not scaling.is_noop():
+            # Apply the user-defined factor on top of the built-in scaling.
+            # New RegisterCosem instances are created so the shared module-level
+            # DEFAULT_REGISTER_MAP is never mutated.
+            self._register_obis = {
+                obis: replace(reg, scaling=reg.scaling * scaling.get_factor(obis))
+                for obis, reg in self._register_obis.items()
+            }
         self._id_detect_countdown = Cosem.OBJECT_DETECT_ATTEMPTS
 
     def retrieve_id(self, dlms_objects: Dict[OBISCode, Any]) -> str:

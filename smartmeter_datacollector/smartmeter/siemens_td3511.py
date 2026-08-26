@@ -8,9 +8,9 @@
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import aioserial
 import serial
@@ -20,6 +20,7 @@ from smartmeter_datacollector.smartmeter.meter_data import (MeterDataBundle, Met
                                                             MeterDataPointTypes)
 from smartmeter_datacollector.smartmeter.obis import OBISCode
 from smartmeter_datacollector.smartmeter.reader import Reader, ReaderError
+from smartmeter_datacollector.smartmeter.scaling import ScalingConfig, parse_obis
 from smartmeter_datacollector.smartmeter.serial_reader import SerialConfig
 
 LOGGER = logging.getLogger("smartmeter")
@@ -30,7 +31,8 @@ class SiemensTD3511(Meter):
 
     def __init__(self, port: str,
                  baudrate: int = BAUDRATE,
-                 use_system_time: bool = False) -> None:
+                 use_system_time: bool = False,
+                 scaling: Optional[ScalingConfig] = None) -> None:
         super().__init__()
         serial_config = SerialConfig(
             port=port,
@@ -41,7 +43,7 @@ class SiemensTD3511(Meter):
             termination=b"\r\n"
         )
         try:
-            self._parser = SiemensParser(use_system_time)
+            self._parser = SiemensParser(use_system_time, scaling)
             self._serial = SiemensSerialReader(serial_config, self._data_received)
         except ReaderError as ex:
             LOGGER.fatal("Unable to setup serial reader for Siemens TD3511. '%s'", ex)
@@ -186,10 +188,19 @@ class SiemensParser():
     REGEX = re.compile(r"(.{3,20})\(([\d\-\.:]{3,20})[*\)](.{0,10}[^\)\r\n])?")
     REGEX_OBIS_2_OCT = re.compile(r"^\d{1,3}\W\d{1,3}$")
 
-    def __init__(self, use_system_time: bool = False) -> None:
+    def __init__(self, use_system_time: bool = False,
+                 scaling: Optional[ScalingConfig] = None) -> None:
         self._use_system_time = use_system_time
         self._buffer = []
         self._register_obis = {r.obis: r for r in DEFAULT_REGISTER_MAPPING}
+        if scaling and not scaling.is_noop():
+            # Apply the user-defined factor on top of the built-in scaling.
+            # New RegisterDataPoint instances are created so the shared
+            # module-level DEFAULT_REGISTER_MAPPING is never mutated.
+            self._register_obis = {
+                obis: replace(reg, scaling=reg.scaling * scaling.get_factor(parse_obis(obis)))
+                for obis, reg in self._register_obis.items()
+            }
 
     def append_to_buffer(self, received_data):
         self._buffer.append(received_data.decode())
