@@ -10,10 +10,10 @@ from typing import Optional
 
 import serial
 
+from smartmeter_datacollector.smartmeter.adjustments import MeterAdjustments
 from smartmeter_datacollector.smartmeter.cosem import Cosem
 from smartmeter_datacollector.smartmeter.meter import MeterError, SerialHdlcDlmsMeter
 from smartmeter_datacollector.smartmeter.reader import ReaderError
-from smartmeter_datacollector.smartmeter.scaling import ScalingConfig
 from smartmeter_datacollector.smartmeter.serial_reader import SerialConfig
 
 LOGGER = logging.getLogger("smartmeter")
@@ -26,7 +26,7 @@ class LGE450(SerialHdlcDlmsMeter):
                  baudrate: int = BAUDRATE,
                  decryption_key: Optional[str] = None,
                  use_system_time: bool = False,
-                 scaling: Optional[ScalingConfig] = None) -> None:
+                 adjustments: Optional[MeterAdjustments] = None) -> None:
         serial_config = SerialConfig(
             port=port,
             baudrate=baudrate,
@@ -35,7 +35,7 @@ class LGE450(SerialHdlcDlmsMeter):
             stop_bits=serial.STOPBITS_ONE,
             termination=SerialHdlcDlmsMeter.HDLC_FLAG
         )
-        cosem = Cosem(fallback_id=port, scaling=scaling)
+        cosem = Cosem(fallback_id=port, adjustments=adjustments)
         try:
             super().__init__(serial_config, cosem, decryption_key, use_system_time)
         except ReaderError as ex:

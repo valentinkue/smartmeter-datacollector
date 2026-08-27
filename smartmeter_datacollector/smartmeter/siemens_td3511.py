@@ -15,12 +15,12 @@ from typing import Callable, List, Optional
 import aioserial
 import serial
 
+from smartmeter_datacollector.smartmeter.adjustments import MeterAdjustments, parse_obis
 from smartmeter_datacollector.smartmeter.meter import Meter, MeterError
 from smartmeter_datacollector.smartmeter.meter_data import (MeterDataBundle, MeterDataPoint, MeterDataPointType,
                                                             MeterDataPointTypes)
 from smartmeter_datacollector.smartmeter.obis import OBISCode
 from smartmeter_datacollector.smartmeter.reader import Reader, ReaderError
-from smartmeter_datacollector.smartmeter.scaling import ScalingConfig, parse_obis
 from smartmeter_datacollector.smartmeter.serial_reader import SerialConfig
 
 LOGGER = logging.getLogger("smartmeter")
@@ -32,7 +32,7 @@ class SiemensTD3511(Meter):
     def __init__(self, port: str,
                  baudrate: int = BAUDRATE,
                  use_system_time: bool = False,
-                 scaling: Optional[ScalingConfig] = None) -> None:
+                 adjustments: Optional[MeterAdjustments] = None) -> None:
         super().__init__()
         serial_config = SerialConfig(
             port=port,
@@ -43,7 +43,7 @@ class SiemensTD3511(Meter):
             termination=b"\r\n"
         )
         try:
-            self._parser = SiemensParser(use_system_time, scaling)
+            self._parser = SiemensParser(use_system_time, adjustments)
             self._serial = SiemensSerialReader(serial_config, self._data_received)
         except ReaderError as ex:
             LOGGER.fatal("Unable to setup serial reader for Siemens TD3511. '%s'", ex)
@@ -154,6 +154,15 @@ class RegisterDataPoint:
     scaling: float = 1.0
 
 
+def _adjust_register(reg: RegisterDataPoint, adjustments: MeterAdjustments) -> RegisterDataPoint:
+    """Return a copy of ``reg`` with user-configured scaling / unit applied."""
+    scaling, unit = adjustments.resolve(parse_obis(reg.obis), reg.scaling, reg.data_point_type.unit)
+    data_point_type = reg.data_point_type
+    if unit != data_point_type.unit:
+        data_point_type = replace(data_point_type, unit=unit)
+    return replace(reg, scaling=scaling, data_point_type=data_point_type)
+
+
 DEFAULT_REGISTER_MAPPING = [
     RegisterDataPoint("1.7.0", MeterDataPointTypes.ACTIVE_POWER_P.value, 1000),
     RegisterDataPoint("2.7.0", MeterDataPointTypes.ACTIVE_POWER_N.value, 1000),
@@ -189,16 +198,16 @@ class SiemensParser():
     REGEX_OBIS_2_OCT = re.compile(r"^\d{1,3}\W\d{1,3}$")
 
     def __init__(self, use_system_time: bool = False,
-                 scaling: Optional[ScalingConfig] = None) -> None:
+                 adjustments: Optional[MeterAdjustments] = None) -> None:
         self._use_system_time = use_system_time
         self._buffer = []
         self._register_obis = {r.obis: r for r in DEFAULT_REGISTER_MAPPING}
-        if scaling and not scaling.is_noop():
-            # Apply the user-defined factor on top of the built-in scaling.
-            # New RegisterDataPoint instances are created so the shared
-            # module-level DEFAULT_REGISTER_MAPPING is never mutated.
+        if adjustments and not adjustments.is_noop():
+            # Apply the user-defined scaling / unit on top of the built-in
+            # behaviour. New RegisterDataPoint instances are created so the
+            # shared module-level DEFAULT_REGISTER_MAPPING is never mutated.
             self._register_obis = {
-                obis: replace(reg, scaling=reg.scaling * scaling.get_factor(parse_obis(obis)))
+                obis: _adjust_register(reg, adjustments)
                 for obis, reg in self._register_obis.items()
             }
 

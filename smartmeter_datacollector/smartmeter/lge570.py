@@ -10,12 +10,12 @@ from typing import Optional
 
 import serial
 
+from smartmeter_datacollector.smartmeter.adjustments import MeterAdjustments
 from smartmeter_datacollector.smartmeter.cosem import Cosem, RegisterCosem
 from smartmeter_datacollector.smartmeter.meter import MeterError, SerialHdlcDlmsMeter
 from smartmeter_datacollector.smartmeter.meter_data import MeterDataPointTypes
 from smartmeter_datacollector.smartmeter.obis import OBISCode
 from smartmeter_datacollector.smartmeter.reader import ReaderError
-from smartmeter_datacollector.smartmeter.scaling import ScalingConfig
 from smartmeter_datacollector.smartmeter.serial_reader import SerialConfig
 
 LOGGER = logging.getLogger("smartmeter")
@@ -28,7 +28,7 @@ class LGE570(SerialHdlcDlmsMeter):
                  baudrate: int = BAUDRATE,
                  decryption_key: Optional[str] = None,
                  use_system_time: bool = False,
-                 scaling: Optional[ScalingConfig] = None) -> None:
+                 adjustments: Optional[MeterAdjustments] = None) -> None:
         serial_config = SerialConfig(
             port=port,
             baudrate=baudrate,
@@ -42,7 +42,7 @@ class LGE570(SerialHdlcDlmsMeter):
             RegisterCosem(OBISCode(1, 0, 51, 7, 0), MeterDataPointTypes.CURRENT_L2.value, 1.0),
             RegisterCosem(OBISCode(1, 0, 71, 7, 0), MeterDataPointTypes.CURRENT_L3.value, 1.0),
         ]
-        cosem = Cosem(fallback_id=port, register_obis_extended=current_registers, scaling=scaling)
+        cosem = Cosem(fallback_id=port, register_obis_extended=current_registers, adjustments=adjustments)
         try:
             super().__init__(serial_config, cosem, decryption_key, use_system_time)
         except ReaderError as ex:

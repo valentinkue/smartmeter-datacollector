@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional
 from gurux_dlms import GXDateTime
 from gurux_dlms.objects import GXDLMSClock, GXDLMSData, GXDLMSRegister
 
+from smartmeter_datacollector.smartmeter.adjustments import MeterAdjustments
 from smartmeter_datacollector.smartmeter.meter_data import MeterDataPointType, MeterDataPointTypes
 from smartmeter_datacollector.smartmeter.obis import OBISCode
-from smartmeter_datacollector.smartmeter.scaling import ScalingConfig
 
 LOGGER = logging.getLogger("smartmeter")
 
@@ -26,6 +26,19 @@ class RegisterCosem:
     obis: OBISCode
     data_point_type: MeterDataPointType
     scaling: float = 1.0
+
+
+def _adjust_register(reg: RegisterCosem, adjustments: MeterAdjustments) -> RegisterCosem:
+    """Return a copy of ``reg`` with user-configured scaling / unit applied.
+
+    New instances are created so the shared module-level DEFAULT_REGISTER_MAP
+    (and the shared MeterDataPointType enum values) are never mutated.
+    """
+    scaling, unit = adjustments.resolve(reg.obis, reg.scaling, reg.data_point_type.unit)
+    data_point_type = reg.data_point_type
+    if unit != data_point_type.unit:
+        data_point_type = replace(data_point_type, unit=unit)
+    return replace(reg, scaling=scaling, data_point_type=data_point_type)
 
 
 DEFAULT_REGISTER_MAP = [
@@ -113,7 +126,7 @@ class Cosem:
                  fallback_id: str,
                  id_obis_override: Optional[List[OBISCode]] = None,
                  register_obis_extended: Optional[List[RegisterCosem]] = None,
-                 scaling: Optional[ScalingConfig] = None) -> None:
+                 adjustments: Optional[MeterAdjustments] = None) -> None:
         self._id: Optional[str] = None
         if not fallback_id:
             fallback_id = str(uuid.uuid1())
@@ -123,12 +136,9 @@ class Cosem:
         self._register_obis = {r.obis: r for r in DEFAULT_REGISTER_MAP}
         if register_obis_extended:
             self._register_obis.update({r.obis: r for r in register_obis_extended})
-        if scaling and not scaling.is_noop():
-            # Apply the user-defined factor on top of the built-in scaling.
-            # New RegisterCosem instances are created so the shared module-level
-            # DEFAULT_REGISTER_MAP is never mutated.
+        if adjustments and not adjustments.is_noop():
             self._register_obis = {
-                obis: replace(reg, scaling=reg.scaling * scaling.get_factor(obis))
+                obis: _adjust_register(reg, adjustments)
                 for obis, reg in self._register_obis.items()
             }
         self._id_detect_countdown = Cosem.OBJECT_DETECT_ATTEMPTS
